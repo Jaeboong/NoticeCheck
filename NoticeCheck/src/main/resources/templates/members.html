@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>부원 관리</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .high-uncheck { color: red; font-weight: bold; }
+        .medium-uncheck { color: orange; }
+        .low-uncheck { color: green; }
+        .action-buttons .btn {
+            margin-right: 8px;
+        }
+        .action-buttons form {
+            display: inline-block;
+        }
+        .sortable {
+            cursor: pointer;
+            user-select: none;
+        }
+        .sortable:hover {
+            background-color: #f8f9fa;
+        }
+        .sort-icon::after {
+            content: '↕️';
+            margin-left: 5px;
+            font-size: 0.8em;
+        }
+        .sort-asc::after {
+            content: '↑';
+        }
+        .sort-desc::after {
+            content: '↓';
+        }
+        .bulk-actions {
+            margin-bottom: 1rem;
+        }
+    </style>
+</head>
+<body class="container mt-5">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>부원 관리</h1>
+        <a href="/" class="btn btn-outline-primary">메인 페이지로 돌아가기</a>
+    </div>
+    
+    <!-- 부원 추가 폼 -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <h5 class="card-title">새 부원 추가</h5>
+            <form th:action="@{/members/add}" method="post">
+                <div class="mb-3">
+                    <label for="names" class="form-label">부원 이름 목록 (줄바꿈이나 띄어쓰기로 구분)</label>
+                    <textarea class="form-control" id="names" name="names" rows="5" 
+                              placeholder="예시:
+강서준
+강윤성
+고은서
+..." required></textarea>
+                </div>
+                <div class="text-end">
+                    <button type="submit" class="btn btn-primary">추가</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 부원 목록 -->
+    <div class="card">
+        <div class="card-body">
+            <h5 class="card-title">부원 목록</h5>
+            <div class="bulk-actions">
+                <button id="selectAll" class="btn btn-outline-secondary btn-sm">전체 선택</button>
+                <button id="deselectAll" class="btn btn-outline-secondary btn-sm">전체 선택 해제</button>
+                <button id="deleteSelected" class="btn btn-danger btn-sm" style="display: none;">선택된 부원 삭제</button>
+            </div>
+            <form id="bulkDeleteForm" th:action="@{/members/bulk-delete}" method="post">
+                <div class="table-responsive">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th width="40px">
+                                    <input type="checkbox" id="masterCheckbox" class="form-check-input">
+                                </th>
+                                <th>ID</th>
+                                <th class="sortable" data-sort="name">이름</th>
+                                <th class="sortable" data-sort="uncheck">미체크 횟수</th>
+                                <th>관리</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr th:each="member : ${members}">
+                                <td>
+                                    <input type="checkbox" class="form-check-input member-checkbox" 
+                                           th:value="${member.id}" name="selectedIds">
+                                </td>
+                                <td th:text="${member.id}"></td>
+                                <td th:text="${member.name}"></td>
+                                <td>
+                                    <span th:text="${member.uncheckCount}"
+                                          th:class="${member.uncheckCount >= 5 ? 'high-uncheck' : 
+                                                    (member.uncheckCount >= 3 ? 'medium-uncheck' : 
+                                                    (member.uncheckCount > 0 ? 'low-uncheck' : ''))}">
+                                    </span>
+                                </td>
+                                <td>
+                                    <div class="action-buttons">
+                                        <button type="button" class="btn btn-sm btn-primary edit-btn"
+                                                th:data-id="${member.id}"
+                                                th:data-name="${member.name}">수정</button>
+                                        <form th:action="@{/members/delete/{id}(id=${member.id})}" method="post">
+                                            <button type="submit" class="btn btn-sm btn-danger" 
+                                                    onclick="return confirm('정말 삭제하시겠습니까?')">삭제</button>
+                                        </form>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 수정 모달 -->
+    <div class="modal fade" id="editModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">부원 정보 수정</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <form id="editForm" method="post">
+                    <div class="modal-body">
+                        <input type="text" class="form-control" id="editName" name="name" required>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                        <button type="submit" class="btn btn-primary">저장</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // 수정 버튼 이벤트
+            document.querySelectorAll('.edit-btn').forEach(button => {
+                button.addEventListener('click', function() {
+                    const id = this.getAttribute('data-id');
+                    const name = this.getAttribute('data-name');
+                    const modal = new bootstrap.Modal(document.getElementById('editModal'));
+                    document.getElementById('editForm').action = '/members/update/' + id;
+                    document.getElementById('editName').value = name;
+                    modal.show();
+                });
+            });
+
+            // 테이블 정렬 기능
+            let sortDirection = 'asc';
+            let lastSortedColumn = null;
+
+            function getInitialConsonant(str) {
+                const consonants = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+                const base = 44032;
+                const first = str.charCodeAt(0);
+                
+                if(first < base) {
+                    return str;
+                }
+                
+                const consonantIndex = Math.floor((first - base) / 588);
+                return consonants[consonantIndex];
+            }
+
+            function compareKorean(a, b) {
+                const aChar = getInitialConsonant(a);
+                const bChar = getInitialConsonant(b);
+                return aChar.localeCompare(bChar, 'ko-KR');
+            }
+
+            function sortTable(column) {
+                const table = document.querySelector('table');
+                const tbody = table.querySelector('tbody');
+                const rows = Array.from(tbody.querySelectorAll('tr'));
+
+                // 정렬 방향 결정
+                if (lastSortedColumn === column) {
+                    sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+                } else {
+                    sortDirection = column === 'uncheck' ? 'desc' : 'asc'; // 미체크 횟수는 기본적으로 내림차순
+                }
+                lastSortedColumn = column;
+
+                // 정렬 아이콘 업데이트
+                document.querySelectorAll('th.sortable').forEach(th => {
+                    th.classList.remove('sort-asc', 'sort-desc');
+                    if (th.dataset.sort === column) {
+                        th.classList.add(sortDirection === 'asc' ? 'sort-asc' : 'sort-desc');
+                    }
+                });
+
+                // 데이터 정렬
+                rows.sort((rowA, rowB) => {
+                    let valueA, valueB;
+                    
+                    if (column === 'name') {
+                        valueA = rowA.cells[2].textContent.trim(); // ID 열이 추가되어 인덱스 변경
+                        valueB = rowB.cells[2].textContent.trim();
+                        return sortDirection === 'asc' ? 
+                            compareKorean(valueA, valueB) : 
+                            compareKorean(valueB, valueA);
+                    } else if (column === 'uncheck') {
+                        valueA = parseInt(rowA.cells[3].textContent.trim()) || 0; // ID 열이 추가되어 인덱스 변경
+                        valueB = parseInt(rowB.cells[3].textContent.trim()) || 0;
+                        return sortDirection === 'asc' ? valueA - valueB : valueB - valueA;
+                    }
+                });
+
+                // 정렬된 행 다시 삽입
+                tbody.innerHTML = '';
+                rows.forEach(row => tbody.appendChild(row));
+            }
+
+            // 정렬 이벤트 리스너 추가
+            document.querySelectorAll('th.sortable').forEach(th => {
+                th.addEventListener('click', () => sortTable(th.dataset.sort));
+            });
+
+            // 체크박스 관련 기능
+            const masterCheckbox = document.getElementById('masterCheckbox');
+            const memberCheckboxes = document.querySelectorAll('.member-checkbox');
+            const selectAllBtn = document.getElementById('selectAll');
+            const deselectAllBtn = document.getElementById('deselectAll');
+            const deleteSelectedBtn = document.getElementById('deleteSelected');
+            const bulkDeleteForm = document.getElementById('bulkDeleteForm');
+
+            function updateDeleteButtonVisibility() {
+                const checkedCount = document.querySelectorAll('.member-checkbox:checked').length;
+                deleteSelectedBtn.style.display = checkedCount > 0 ? 'inline-block' : 'none';
+            }
+
+            function updateMasterCheckbox() {
+                const totalCheckboxes = memberCheckboxes.length;
+                const checkedCheckboxes = document.querySelectorAll('.member-checkbox:checked').length;
+                masterCheckbox.checked = totalCheckboxes === checkedCheckboxes;
+                masterCheckbox.indeterminate = checkedCheckboxes > 0 && checkedCheckboxes < totalCheckboxes;
+            }
+
+            // 전체 선택 버튼
+            selectAllBtn.addEventListener('click', () => {
+                memberCheckboxes.forEach(checkbox => checkbox.checked = true);
+                updateMasterCheckbox();
+                updateDeleteButtonVisibility();
+            });
+
+            // 전체 선택 해제 버튼
+            deselectAllBtn.addEventListener('click', () => {
+                memberCheckboxes.forEach(checkbox => checkbox.checked = false);
+                updateMasterCheckbox();
+                updateDeleteButtonVisibility();
+            });
+
+            // 마스터 체크박스 이벤트
+            masterCheckbox.addEventListener('change', function() {
+                memberCheckboxes.forEach(checkbox => checkbox.checked = this.checked);
+                updateDeleteButtonVisibility();
+            });
+
+            // 개별 체크박스 이벤트
+            memberCheckboxes.forEach(checkbox => {
+                checkbox.addEventListener('change', () => {
+                    updateMasterCheckbox();
+                    updateDeleteButtonVisibility();
+                });
+            });
+
+            // 선택 삭제 버튼 이벤트
+            deleteSelectedBtn.addEventListener('click', () => {
+                const selectedCount = document.querySelectorAll('.member-checkbox:checked').length;
+                if (selectedCount === 0) {
+                    alert('삭제할 부원을 선택해주세요.');
+                    return;
+                }
+                
+                if (confirm(`선택한 ${selectedCount}명의 부원을 삭제하시겠습니까?`)) {
+                    bulkDeleteForm.submit();
+                }
+            });
+
+            // 초기 상태 설정
+            updateMasterCheckbox();
+            updateDeleteButtonVisibility();
+        });
+    </script>
+</body>
+</html> 
