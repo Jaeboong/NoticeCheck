@@ -1,0 +1,27 @@
+services:
+  mariadb:
+    image: mariadb:latest
+    container_name: notice
+    environment:
+      MYSQL_ROOT_PASSWORD: 1234
+      MYSQL_DATABASE: notice
+      MYSQL_USER: notice123
+      MYSQL_PASSWORD: notice123
+    ports:
+      - "3309:3306"
+    volumes:
+      - mariadb_data:/var/lib/mysql
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: notice-phpmyadmin
+    environment:
+      PMA_HOST: mariadb   # 기본적으로 mariadb에 연결
+      PMA_USER: notice123
+      PMA_PASSWORD: notice123
+      MYSQL_ROOT_PASSWORD: 1234  # MariaDB root 비밀번호
+    ports:
+      - "9008:80"  # phpMyAdmin에 접속하는 포트 (브라우저에서 http://localhost:9008 사용)
+    depends_on:
+      - mariadb
+volumes:
+  mariadb_data:
